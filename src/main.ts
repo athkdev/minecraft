@@ -4,8 +4,8 @@ import * as THREE from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import Stats from "stats.js";
-
 import NOISE from "./perlin";
+import {fragmentShader, vertexShader} from "./shaders";
 
 function getImageUrl(name: string) {
   return `/textures/block/${name}.png`;
@@ -35,6 +35,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const textureLoader = new THREE.TextureLoader();
+
 const soilTexture = textureLoader.load(getImageUrl("grass_block_side"));
 soilTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 // soilTexture.minFilter = THREE.LinearFilter;
@@ -99,7 +100,6 @@ spotLight.shadow.camera.fov = 30; // Field of view for shadow camera
 
 // scene.add(spotLight);
 
-const geometries: any = [];
 
 function setUVs(geometry: any) {
   const uvs = geometry.attributes.uv.array;
@@ -146,23 +146,49 @@ function setUVs(geometry: any) {
 }
 
 const CHUNK_SIZE = 200;
-const MAX_HEIGHT = 15;
+const MAX_HEIGHT = 25;
+const MAX_DEPTH = 12;
+const WATER_LEVEL = 5;
+
+
+const geometries: any = [];
+const lakeGeometries: any = [];
 
 for (let x = 0; x < CHUNK_SIZE; ++x) {
   for (let z = 0; z < CHUNK_SIZE; ++z) {
     // const height = Math.floor(Math.random() * MAX_HEIGHT);
 
-    const h =
-      n.perlin2(z * (7 / CHUNK_SIZE), x * (7 / CHUNK_SIZE)) * MAX_HEIGHT;
+    const baseHeight =
+      n.perlin2(z * (9 / CHUNK_SIZE), x * (9 / CHUNK_SIZE)) * MAX_HEIGHT;
+
+    const featureNoise =
+      n.perlin2(x * (5 / CHUNK_SIZE), z * (5 / CHUNK_SIZE));  // nested perlin noise for generating lakes
+
+    let finalHeight = Math.max(MAX_DEPTH, baseHeight + MAX_DEPTH);
+
+    if (featureNoise < -0.2) {
+      finalHeight = Math.min(WATER_LEVEL, finalHeight);
+    }
+
 
     // place blocks vertically
-    for (let y = 0; y < Math.max(1, h); ++y) {
+    
+    for (let y = 0; y < finalHeight; ++y) {
       const blockSize = 1;
       const blockGeometry = geometry.clone();
 
       blockGeometry.translate(x * blockSize, y * blockSize, z * blockSize);
 
-      geometries.push(blockGeometry);
+      console.log(featureNoise)
+
+      if (y < WATER_LEVEL && featureNoise < -0.2) {
+        // Add to water geometries
+        lakeGeometries.push(blockGeometry);
+      }
+      else {
+
+        geometries.push(blockGeometry);
+      }
 
       setUVs(blockGeometry);
     }
@@ -179,17 +205,45 @@ scene.add(dirLight1);
 
 group.frustumCulled = true;
 
-const merged = BufferGeometryUtils.mergeGeometries(geometries, true);
+
+
+const shaderMaterial = new THREE.ShaderMaterial({
+  vertexShader: vertexShader,
+  fragmentShader: fragmentShader,
+  uniforms: {
+    textureAtlas: { value: grassAtlas},
+    tileCount: { value: new THREE.Vector2(1, 1) },
+    diffuseTexture: { value: grassAtlas},
+    // shadowMap: { value: shadowRenderTarget.texture },
+    // lightSpaceMatrix: { value: lightCamera.projectionMatrix.multiply(lightCamera.matrixWorldInverse) },
+    sunPosition: { value: new THREE.Vector3(100, 100, 100) },
+    sunColor: { value: new THREE.Vector3(1.0, 0.95, 0.8) },
+    ambientLight: { value: new THREE.Vector3(0.2, 0.2, 0.3) },
+    time: { value: 0 }
+  }
+});
+
+const regular = BufferGeometryUtils.mergeGeometries(geometries, true);
+const lakes = BufferGeometryUtils.mergeGeometries(lakeGeometries, true);
 
 const mesh = new THREE.Mesh(
-  merged,
-  new THREE.MeshStandardMaterial({ map: grassAtlas }),
+  regular,
+  new THREE.MeshStandardMaterial({ map: grassAtlas })
+     // shaderMaterial
+);
+
+const lakesMesh = new THREE.Mesh(
+  lakes,
+  new THREE.MeshStandardMaterial({ map: grassAtlas })
+     // shaderMaterial
 );
 
 mesh.castShadow = true;
 mesh.receiveShadow = false;
 
 group.add(mesh);
+group.add(lakesMesh);
+
 
 function animate() {
   stats.begin();
@@ -197,6 +251,7 @@ function animate() {
 
   stats.end();
 
+  shaderMaterial.uniforms.time.value = performance.now() * 0.001;
   renderer.render(scene, camera);
 }
 
