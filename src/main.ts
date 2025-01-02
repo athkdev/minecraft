@@ -80,7 +80,7 @@ const NOON = 0xeeaf61;
 // const DUSK = 0xfb9062;
 // const NIGHT = 0x6a0d83;
 
-const light = new THREE.DirectionalLight(NOON, 1);
+const light = new THREE.DirectionalLight(NOON, 3);
 light.castShadow = true;
 light.position.set(1, 1, 1);
 light.target = group;
@@ -156,7 +156,7 @@ function setUVs(geometry: any) {
 const CHUNK_SIZE = 200;
 const MAX_HEIGHT = 25;
 const MAX_DEPTH = 8;
-const WATER_LEVEL = 5;
+const WATER_LEVEL = 7;
 
 
 const geometries: any = [];
@@ -192,17 +192,20 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
 
       if (featureNoise < -0.2) {
         // Add to lake bed geometries
-        lakeGeometries.push(blockGeometry);
         
         // If this is the top block of the lake bed, add water blocks above it
-        if (y === finalHeight - 1) {
-          // Add water blocks from the top of the lake bed up to the water level
+        if (y >= finalHeight - 3) {
+          // Ad water blocks from the top of the lake bed up to the water level
           for (let waterY = y + 1; waterY <= WATER_LEVEL; waterY++) {
             const waterBlockGeometry = geometry.clone();
             waterBlockGeometry.translate(x * blockSize, waterY * blockSize, z * blockSize);
             setUVs(waterBlockGeometry);
             waterGeometries.push(waterBlockGeometry);
           }
+        }
+        else {
+          lakeGeometries.push(blockGeometry);
+
         }
       } else {
         geometries.push(blockGeometry);
