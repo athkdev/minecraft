@@ -56,6 +56,14 @@ const grassAtlas = textureLoader.load(getImageUrl("../grass_atlas"));
 // grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
 grassAtlas.minFilter = THREE.LinearFilter;
 
+const sandAtlas = textureLoader.load(getImageUrl("../sand_atlas"));
+// grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
+sandAtlas.minFilter = THREE.LinearFilter;
+
+const waterAtlas = textureLoader.load(getImageUrl("../water_t"));
+// grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
+waterAtlas.minFilter = THREE.LinearFilter;
+
 // Need a texture loader with that
 
 const n = new NOISE(Math.random());
@@ -147,12 +155,13 @@ function setUVs(geometry: any) {
 
 const CHUNK_SIZE = 200;
 const MAX_HEIGHT = 25;
-const MAX_DEPTH = 12;
+const MAX_DEPTH = 8;
 const WATER_LEVEL = 5;
 
 
 const geometries: any = [];
 const lakeGeometries: any = [];
+const waterGeometries: any = [];
 
 for (let x = 0; x < CHUNK_SIZE; ++x) {
   for (let z = 0; z < CHUNK_SIZE; ++z) {
@@ -179,18 +188,26 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
 
       blockGeometry.translate(x * blockSize, y * blockSize, z * blockSize);
 
-      console.log(featureNoise)
+      setUVs(blockGeometry);
 
-      if (y < WATER_LEVEL && featureNoise < -0.2) {
-        // Add to water geometries
+      if (featureNoise < -0.2) {
+        // Add to lake bed geometries
         lakeGeometries.push(blockGeometry);
-      }
-      else {
-
+        
+        // If this is the top block of the lake bed, add water blocks above it
+        if (y === finalHeight - 1) {
+          // Add water blocks from the top of the lake bed up to the water level
+          for (let waterY = y + 1; waterY <= WATER_LEVEL; waterY++) {
+            const waterBlockGeometry = geometry.clone();
+            waterBlockGeometry.translate(x * blockSize, waterY * blockSize, z * blockSize);
+            setUVs(waterBlockGeometry);
+            waterGeometries.push(waterBlockGeometry);
+          }
+        }
+      } else {
         geometries.push(blockGeometry);
       }
 
-      setUVs(blockGeometry);
     }
   }
 }
@@ -225,6 +242,7 @@ const shaderMaterial = new THREE.ShaderMaterial({
 
 const regular = BufferGeometryUtils.mergeGeometries(geometries, true);
 const lakes = BufferGeometryUtils.mergeGeometries(lakeGeometries, true);
+const water = BufferGeometryUtils.mergeGeometries(waterGeometries, true);
 
 const mesh = new THREE.Mesh(
   regular,
@@ -234,15 +252,26 @@ const mesh = new THREE.Mesh(
 
 const lakesMesh = new THREE.Mesh(
   lakes,
-  new THREE.MeshStandardMaterial({ map: grassAtlas })
+  new THREE.MeshStandardMaterial({ map: sandAtlas })
      // shaderMaterial
 );
+
+const waterMesh = new THREE.Mesh(
+  water,
+  new THREE.MeshStandardMaterial({
+    map: waterAtlas,
+    transparent: true,
+    opacity: 0.6,
+  })
+);
+
 
 mesh.castShadow = true;
 mesh.receiveShadow = false;
 
 group.add(mesh);
 group.add(lakesMesh);
+group.add(waterMesh);
 
 
 function animate() {
