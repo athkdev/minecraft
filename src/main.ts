@@ -9,10 +9,7 @@ import {fragmentShader, vertexShader} from "./shaders";
 
 function getImageUrl(name: string) {
   return `/textures/block/${name}.png`;
-  //return new URL(`/textures/block/${name}.png`, import.meta.url).href;
 }
-
-// const { log } = console;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(
@@ -22,7 +19,6 @@ const camera = new THREE.PerspectiveCamera(
   500,
 );
 
-//scene.background = new THREE.Color(0x01144a);
 scene.background = new THREE.Color(0x08001f);
 scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
 
@@ -56,6 +52,10 @@ const grassAtlas = textureLoader.load(getImageUrl("../grass_atlas"));
 // grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
 grassAtlas.minFilter = THREE.LinearFilter;
 
+const grassNormal = textureLoader.load(getImageUrl("../grass_n"));
+// grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
+grassNormal.minFilter = THREE.LinearFilter;
+
 const sandAtlas = textureLoader.load(getImageUrl("../sand_atlas"));
 // grassTopNormal.anisotropy = renderer.capabilities.getMaxAnisotropy();
 sandAtlas.minFilter = THREE.LinearFilter;
@@ -74,40 +74,11 @@ camera.position.x = 200;
 camera.position.y = 30;
 camera.position.z = 180;
 
-camera.rotation.z = 0.6;
-
 const NOON = 0xeeaf61;
-// const DUSK = 0xfb9062;
-// const NIGHT = 0x6a0d83;
-
-const light = new THREE.DirectionalLight(NOON, 3);
-light.castShadow = true;
-light.position.set(1, 1, 1);
-light.target = group;
-
-// setup shadow properties of the light
-light.shadow.mapSize.width = 2048; // default
-light.shadow.mapSize.height = 2048; // default
-light.shadow.camera.near = 0.5; // default
-light.shadow.camera.far = 500; // default
-
-const spotLight = new THREE.SpotLight(0xffffff, 1);
-spotLight.position.set(10, 20, 10);
-spotLight.castShadow = true;
-spotLight.angle = Math.PI / 6; // Control spotlight angle
-spotLight.penumbra = 0.1; // Softness of the shadow edge
-spotLight.decay = 2; // How quickly the light fades
-spotLight.distance = 100; // Distance where light intensity falls off
-
-// Configure spotlight shadow properties
-spotLight.shadow.mapSize.width = 2048;
-spotLight.shadow.mapSize.height = 2048;
-spotLight.shadow.camera.near = 0.5;
-spotLight.shadow.camera.far = 50;
-spotLight.shadow.camera.fov = 30; // Field of view for shadow camera
-
-// scene.add(spotLight);
-
+const DUSK = 0xfb9062;
+const NIGHT = 0x6a0d83;
+const TWILIGHT = 0x093d4e;
+const SUNRISE = 0xf4d797;
 
 function setUVs(geometry: any) {
   const uvs = geometry.attributes.uv.array;
@@ -158,27 +129,22 @@ const MAX_HEIGHT = 25;
 const MAX_DEPTH = 8;
 const WATER_LEVEL = 7;
 
-
 const geometries: any = [];
 const lakeGeometries: any = [];
 const waterGeometries: any = [];
 
 for (let x = 0; x < CHUNK_SIZE; ++x) {
   for (let z = 0; z < CHUNK_SIZE; ++z) {
-    // const height = Math.floor(Math.random() * MAX_HEIGHT);
 
-    const baseHeight =
-      n.perlin2(z * (9 / CHUNK_SIZE), x * (9 / CHUNK_SIZE)) * MAX_HEIGHT;
+    const baseHeight = n.perlin2(z * (7/ CHUNK_SIZE), x * (7/ CHUNK_SIZE)) * MAX_HEIGHT;
 
-    const featureNoise =
-      n.perlin2(x * (5 / CHUNK_SIZE), z * (5 / CHUNK_SIZE));  // nested perlin noise for generating lakes
+    const featureNoise = n.perlin2(x * (5 / CHUNK_SIZE), z * (5 / CHUNK_SIZE));  // nested perlin noise for generating lakes
 
     let finalHeight = Math.max(MAX_DEPTH, baseHeight + MAX_DEPTH);
 
     if (featureNoise < -0.2) {
       finalHeight = Math.min(WATER_LEVEL, finalHeight);
     }
-
 
     // place blocks vertically
     
@@ -215,33 +181,7 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
   }
 }
 
-const dirLight1 = new THREE.DirectionalLight(0xe3e3e3, 1);
-dirLight1.position.set(0, 1, 1);
-scene.add(dirLight1);
-
-// const dirLight2 = new THREE.DirectionalLight(NOON, 1);
-// dirLight1.position.set(-1, -1, -1);
-// scene.add(dirLight2);
-
 group.frustumCulled = true;
-
-
-
-const shaderMaterial = new THREE.ShaderMaterial({
-  vertexShader: vertexShader,
-  fragmentShader: fragmentShader,
-  uniforms: {
-    textureAtlas: { value: grassAtlas},
-    tileCount: { value: new THREE.Vector2(1, 1) },
-    diffuseTexture: { value: grassAtlas},
-    // shadowMap: { value: shadowRenderTarget.texture },
-    // lightSpaceMatrix: { value: lightCamera.projectionMatrix.multiply(lightCamera.matrixWorldInverse) },
-    sunPosition: { value: new THREE.Vector3(100, 100, 100) },
-    sunColor: { value: new THREE.Vector3(1.0, 0.95, 0.8) },
-    ambientLight: { value: new THREE.Vector3(0.2, 0.2, 0.3) },
-    time: { value: 0 }
-  }
-});
 
 const regular = BufferGeometryUtils.mergeGeometries(geometries, true);
 const lakes = BufferGeometryUtils.mergeGeometries(lakeGeometries, true);
@@ -249,33 +189,34 @@ const water = BufferGeometryUtils.mergeGeometries(waterGeometries, true);
 
 const mesh = new THREE.Mesh(
   regular,
-  new THREE.MeshStandardMaterial({ map: grassAtlas })
-     // shaderMaterial
+  new THREE.MeshStandardMaterial({ map: grassAtlas, normalMap: grassNormal, normalScale: new THREE.Vector2(1/4, -1/4), roughness: 1, metalness: 0 })
+
 );
+
+mesh.castShadow = true;
+mesh.receiveShadow = true;
 
 const lakesMesh = new THREE.Mesh(
   lakes,
   new THREE.MeshStandardMaterial({ map: sandAtlas })
-     // shaderMaterial
 );
+
+lakesMesh.receiveShadow = true;
 
 const waterMesh = new THREE.Mesh(
   water,
   new THREE.MeshStandardMaterial({
     map: waterAtlas,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.7,
+    metalness: 0.4,
+    roughness: 0.5,
   })
 );
 
+waterMesh.receiveShadow = true;
 
-mesh.castShadow = true;
-mesh.receiveShadow = false;
-
-group.add(mesh);
-group.add(lakesMesh);
-group.add(waterMesh);
-
+group.add(mesh, lakesMesh, waterMesh);
 
 function animate() {
   stats.begin();
@@ -283,25 +224,39 @@ function animate() {
 
   stats.end();
 
-  shaderMaterial.uniforms.time.value = performance.now() * 0.001;
   renderer.render(scene, camera);
 }
 
-//const hemisphere_light = new THREE.HemisphereLight(0xfb9062, 0x080820, 1);
-
 scene.add(group);
-// scene.add(hemisphere_light);
 
-// const ambientLight = new THREE.AmbientLight(0x555555, 1);
-// scene.add(ambientLight);
+const ambientLight = new THREE.AmbientLight(0x555555, 1);
+
+const directionalLight = new THREE.DirectionalLight( SUNRISE, 0.5 );
+directionalLight.position.set(300, 70, 300);
+directionalLight.castShadow = true;
+directionalLight.intensity = 1;
+directionalLight.target = group;
+
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height= 2048;
+directionalLight.shadow.camera.near = 0.1;
+directionalLight.shadow.camera.far = 2000;
+
+directionalLight.shadow.camera.left = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.right = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.top = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.bottom = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+
+scene.add( directionalLight, ambientLight );
+
 
 const controls = new MapControls(camera, renderer.domElement);
 
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.08;
+// controls.autoRotate = true;
+// controls.autoRotateSpeed = 0.08;
 
 controls.screenSpacePanning = false;
 
@@ -311,15 +266,6 @@ controls.maxDistance = 500;
 const app = document.getElementById("app");
 
 app?.appendChild(renderer.domElement);
-
-const button = document.createElement("button");
-button.innerHTML = "anti-aliasing ON";
-button.style.position = "absolute";
-button.style.top = "0";
-button.style.left = "0";
-button.style.margin = "6px";
-
-// app?.appendChild(button);
 
 renderer.setAnimationLoop(animate);
 
