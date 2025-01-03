@@ -25,6 +25,7 @@ scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
 
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
+  precision: "highp"
 });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -129,7 +130,7 @@ function setUVs(geometry: any) {
   geometry.attributes.uv.needsUpdate = true;
 }
 
-const CHUNK_SIZE = 200;
+const CHUNK_SIZE = 100;
 const MAX_HEIGHT = 25;
 const MAX_DEPTH = 3;
 const WATER_LEVEL = MAX_DEPTH - 1;
@@ -169,9 +170,11 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
           // Ad water blocks from the top of the lake bed up to the water level
           for (let waterY = y + 1; waterY <= WATER_LEVEL; waterY++) {
             const waterBlockGeometry = geometry.clone();
-            waterBlockGeometry.translate(x * blockSize, waterY * blockSize, z * blockSize);
             setUVs(waterBlockGeometry);
+            waterBlockGeometry.translate(x * blockSize, waterY * blockSize, z * blockSize);
+            // waterBlockGeometry.rotateX(-Math.PI / 2);
             waterGeometries.push(waterBlockGeometry);
+
           }
         }
         else {
@@ -208,26 +211,154 @@ const lakesMesh = new THREE.Mesh(
 
 lakesMesh.receiveShadow = true;
 
+const waterMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+      time: { value: 0.0 },
+      envMap: { value: scene.environment },
+      waterTexture: { value: waterAtlas },
+      lod: { value: 0.0 }
+  },
+  vertexShader: `
+      uniform float time;
+      
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying vec2 vUv;
+      varying vec3 vPosition;
+
+      float random(vec2 st) {
+          return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+      }
+
+      void main() {
+          vUv = uv;
+          vPosition = position;
+          
+          // Wave effect
+          float wave1 = sin(position.x * 2.0 + time) * 0.1;
+          float wave2 = sin(position.z * 1.5 + time * 1.5) * 0.1;
+          float wave3 = sin((position.x + position.z) * 1.0 + time * 0.8) * 0.1;
+          float noise = random(vec2(position.x * 0.05 + time * 0.05, position.z * 0.05)) * 0.05;
+          
+          vec3 transformed = position;
+          if (abs(position.y - ceil(position.y)) < 0.1) {
+              transformed.y += wave1 + wave2 + wave3 + noise;
+          }
+
+          vec3 objectNormal = normalize(normal + vec3(
+              wave1 * 2.0,
+              1.0,
+              wave2 * 2.0
+          ));
+          
+          vNormal = normalMatrix * objectNormal;
+          vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+          vViewPosition = -mvPosition.xyz;
+          
+          gl_Position = projectionMatrix * mvPosition;
+      }
+  `,
+  fragmentShader: `
+      uniform samplerCube envMap;
+      uniform sampler2D waterTexture;
+      uniform float time;
+      uniform float lod;
+
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying vec2 vUv;
+      varying vec3 vPosition;
+
+      vec3 inverseTransformDirection(in vec3 dir, in mat4 matrix) {
+          return normalize((vec4(dir, 0.0) * matrix).xyz);
+      }
+
+      void main() {
+          vec3 reflectedDirection = normalize(reflect(vViewPosition, normalize(vNormal)));
+          reflectedDirection = inverseTransformDirection(-reflectedDirection, viewMatrix);
+
+          vec4 envColor = textureCube(envMap, reflectedDirection, lod);
+
+          // Animate water texture
+          vec2 uv = vUv;
+          uv.x += sin(vPosition.x * 0.05 + time * 0.5) * 0.01;
+          uv.y += cos(vPosition.z * 0.05 + time * 0.5) * 0.01;
+          
+          vec4 waterColor = texture2D(waterTexture, uv);
+
+          float fresnel = pow(1.0 - max(0.0, dot(normalize(vNormal), normalize(-vViewPosition))), 4.0);
+
+          vec4 finalColor = mix(waterColor, envColor, fresnel * 0.7);
+          finalColor.a = 0.9;
+
+          gl_FragColor = finalColor;
+      }
+  `,
+  transparent: true,
+  side: THREE.DoubleSide
+});
+
+// Update texture settings
+// waterAtlas.wrapS = THREE.RepeatWrapping;
+// waterAtlas.wrapT = THREE.RepeatWrapping;
+waterAtlas.repeat.set(1, 1);
+
+waterMaterial.uniforms.envMap.value = scene.environment;
+
+const waterMaterial1 = new THREE.MeshStandardMaterial({
+  map: waterAtlas,
+  transparent: true,
+  opacity: 0.7,
+  envMap: scene.environment,
+  roughness: 0.2,
+  metalness: 0.8
+});
+
 const waterMesh = new THREE.Mesh(
   water,
-  new THREE.MeshStandardMaterial({
-    map: waterAtlas,
-    transparent: true,
-    opacity: 0.7,
-    metalness: 0.4,
-    roughness: 0.5,
-  })
+waterMaterial1
 );
 
 waterMesh.receiveShadow = true;
 
 group.add(mesh, lakesMesh, waterMesh);
 
+const originalPositions = water.attributes.position.array.slice();
+
 function animate() {
+
   stats.begin();
   controls.update();
 
+  const positions = waterMesh.geometry.attributes.position.array;
+  const time = performance.now() * 0.001; // Current time in seconds
+  
+  for(let i = 0; i < positions.length; i += 3) {
+      // Get the world position of this vertex
+      const worldX = positions[i];
+      const worldZ = positions[i + 2];
+      
+      // Create wave motion
+      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.1;
+      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.1;
+      const wave3 = Math.sin((worldX + worldZ) * 0.4 + time) * 0.05;
+      
+      // Only modify Y position (index + 1)
+      positions[i + 1] = originalPositions[i + 1] + wave1 + wave2 + wave3;
+  } 
+
+  // Mark geometry for update
+  waterMesh.geometry.attributes.position.needsUpdate = true;
+  waterMesh.geometry.computeVertexNormals();
+  
+  // Update water material time uniform if you're still using it
+  if (waterMaterial.uniforms && waterMaterial.uniforms.time) {
+      waterMaterial.uniforms.time.value = time;
+  }
+
   stats.end();
+
+  waterMaterial.uniforms.time.value += 0.016;
 
   renderer.render(scene, camera);
 }
