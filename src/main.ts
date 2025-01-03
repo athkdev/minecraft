@@ -5,7 +5,7 @@ import { MapControls } from "three/addons/controls/MapControls.js";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import Stats from "stats.js";
 import NOISE from "./perlin";
-import {fragmentShader, vertexShader} from "./shaders";
+// import {fragmentShader, vertexShader} from "./shaders";
 
 function getImageUrl(name: string) {
   return `/textures/block/${name}.png`;
