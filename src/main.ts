@@ -126,8 +126,8 @@ function setUVs(geometry: any) {
 
 const CHUNK_SIZE = 200;
 const MAX_HEIGHT = 25;
-const MAX_DEPTH = 8;
-const WATER_LEVEL = 7;
+const MAX_DEPTH = 3;
+const WATER_LEVEL = MAX_DEPTH - 1;
 
 const geometries: any = [];
 const lakeGeometries: any = [];
@@ -160,7 +160,7 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
         // Add to lake bed geometries
         
         // If this is the top block of the lake bed, add water blocks above it
-        if (y >= finalHeight - 3) {
+        if (y >= finalHeight - 1) {
           // Ad water blocks from the top of the lake bed up to the water level
           for (let waterY = y + 1; waterY <= WATER_LEVEL; waterY++) {
             const waterBlockGeometry = geometry.clone();
