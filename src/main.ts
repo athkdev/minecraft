@@ -19,6 +19,7 @@ const camera = new THREE.PerspectiveCamera(
   500,
 );
 
+
 scene.background = new THREE.Color(0x08001f);
 scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
 
@@ -70,9 +71,13 @@ const n = new NOISE(Math.random());
 
 const group = new THREE.Group();
 
-camera.position.x = 200;
-camera.position.y = 30;
-camera.position.z = 180;
+camera.position.x = 94.52478572761616;
+camera.position.y = 37.02590988772987;
+camera.position.z = 258.59135821475945;
+
+camera.rotation.x = -0.14021747131515183;
+camera.rotation.y = 0.00388714806569381;
+camera.rotation.z = 0.0005486449921339769;
 
 const NOON = 0xeeaf61;
 const DUSK = 0xfb9062;
@@ -255,8 +260,8 @@ const controls = new MapControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
-// controls.autoRotate = true;
-// controls.autoRotateSpeed = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.08;
 
 controls.screenSpacePanning = false;
 
