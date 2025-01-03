@@ -79,10 +79,10 @@ camera.rotation.x = -0.14021747131515183;
 camera.rotation.y = 0.00388714806569381;
 camera.rotation.z = 0.0005486449921339769;
 
-const NOON = 0xeeaf61;
-const DUSK = 0xfb9062;
-const NIGHT = 0x6a0d83;
-const TWILIGHT = 0x093d4e;
+// const NOON = 0xeeaf61;
+// const DUSK = 0xfb9062;
+// const NIGHT = 0x6a0d83;
+// const TWILIGHT = 0x093d4e;
 const SUNRISE = 0xf4d797;
 
 function setUVs(geometry: any) {
