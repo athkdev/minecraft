@@ -5,11 +5,14 @@ This is a small weekend project I put together because I wanted to learn `three.
 View the project live [minecraft.athk.dev](https://minecraft.athk.dev/)
 
 
-[minecraft.webm](https://github.com/user-attachments/assets/0080f033-4754-42fe-ac02-0b76b7c3e49f)
+
+
+https://github.com/user-attachments/assets/4b5df915-d2a7-4fe1-b748-a39a14f77ba7
 
 
 
-#### Optimisation
+
+#### Optimization
 Currently the grid is $300 * 300 * 10$ (length, width, height). The height is calculated using the function `perlin2(x, y)` where `(x, y)` is the row and column at that point.
 
 That's a LOT of blocks (a max of $9 * 10^5$ blocks) - which gets pretty compute heavy to render. To tackle that there are some techniques available like [frustum culling](https://learnopengl.com/Guest-Articles/2021/Scene/Frustum-Culling), [occlusion culling](https://docs.godotengine.org/en/stable/tutorials/3d/occlusion_culling.html), and [geometric merging](https://medium.com/acrossthegalaxy/unity-tip-combine-meshes-for-performance-and-organization-c3515c844fdb).
