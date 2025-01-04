@@ -415,7 +415,7 @@ scene.add( directionalLight, ambientLight );
 
 // const dayNightCycle = new DayNightCycle(scene, directionalLight, ambientLight);
 
-let lastTime = performance.now();
+// let lastTime = performance.now();
 
 // const DAY_COLORS = {
 //   DAWN: 0xff9a76,    // Warm orange
