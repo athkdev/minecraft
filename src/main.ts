@@ -6,9 +6,9 @@ import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js"
 import Stats from "stats.js";
 import NOISE from "./perlin";
 
-import {DayNightCycle} from "./daynightcycle";
+// import {DayNightCycle} from "./daynightcycle";
 
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+// import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 // import {fragmentShader, vertexShader} from "./shaders";
 
@@ -417,20 +417,20 @@ scene.add( directionalLight, ambientLight );
 
 let lastTime = performance.now();
 
-const DAY_COLORS = {
-  DAWN: 0xff9a76,    // Warm orange
-  NOON: 0xffffff,    // Bright white
-  DUSK: 0xff6b6b,    // Warm red
-  NIGHT: 0x1a237e    // Deep blue
-};
+// const DAY_COLORS = {
+//   DAWN: 0xff9a76,    // Warm orange
+//   NOON: 0xffffff,    // Bright white
+//   DUSK: 0xff6b6b,    // Warm red
+//   NIGHT: 0x1a237e    // Deep blue
+// };
 
-let dayTime = 0;
-const DAY_DURATION = 300; // 5 minutes per cycle
+// let dayTime = 0;
+// const DAY_DURATION = 300; // 5 minutes per cycle
 
 function animate() {
 
   const currentTime = performance.now();
-  const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+  // const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
   lastTime = currentTime;
 
   stats.begin();
