@@ -5,6 +5,11 @@ import { MapControls } from "three/addons/controls/MapControls.js";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import Stats from "stats.js";
 import NOISE from "./perlin";
+
+import {DayNightCycle} from "./daynightcycle";
+
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
 // import {fragmentShader, vertexShader} from "./shaders";
 
 function getImageUrl(name: string) {
@@ -30,6 +35,7 @@ const renderer = new THREE.WebGLRenderer({
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setSize(window.innerWidth, window.innerHeight);
+
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const textureLoader = new THREE.TextureLoader();
@@ -130,7 +136,7 @@ function setUVs(geometry: any) {
   geometry.attributes.uv.needsUpdate = true;
 }
 
-const CHUNK_SIZE = 100;
+const CHUNK_SIZE = 200;
 const MAX_HEIGHT = 25;
 const MAX_DEPTH = 3;
 const WATER_LEVEL = MAX_DEPTH - 1;
@@ -325,10 +331,112 @@ group.add(mesh, lakesMesh, waterMesh);
 
 const originalPositions = water.attributes.position.array.slice();
 
+// -----------------------------------------------------
+
+// CLOUD GENERATION
+
+// function generateNoiseCloudTexture(size: any) {
+//   const canvas = document.createElement('canvas');
+//   canvas.width = size;
+//   canvas.height = size;
+//   const ctx: any = canvas.getContext('2d');
+
+//   // Create sky gradient
+//   const skyGradient = ctx.createLinearGradient(0, 0, 0, size);
+//   skyGradient.addColorStop(0, '#87CEEB');
+//   skyGradient.addColorStop(1, '#E0F6FF');
+//   ctx.fillStyle = skyGradient;
+//   ctx.fillRect(0, 0, size, size);
+
+//   // Create noise-based clouds
+//   const imageData = ctx.getImageData(0, 0, size, size);
+//   const data = imageData.data;
+
+//   for (let x = 0; x < size; x++) {
+//       for (let y = 0; y < size; y++) {
+//           const i = (y * size + x) * 4;
+
+//           // Generate multiple layers of noise
+//           const n1 = n.perlin2(x * 0.01, y * 0.01);
+//           const n2 = n.perlin2(x * 0.02 + 500, y * 0.02 + 500) * 0.5;
+//           const n3 = n.perlin2(x * 0.04 + 1000, y * 0.04 + 1000) * 0.25;
+
+//           let noiseVal = (n1 + n2 + n3);
+          
+//           // Only show clouds in upper portion and add vertical falloff
+//           const verticalFalloff = 1 - (y / size);
+//           noiseVal *= verticalFalloff * verticalFalloff;
+
+//           // Add cloud color
+//           if (noiseVal > 0.1) {
+//               const alpha = Math.min((noiseVal - 0.1) * 2, 0.8);
+//               data[i] = 255;     // R
+//               data[i + 1] = 255; // G
+//               data[i + 2] = 255; // B
+//               data[i + 3] = alpha * 255; // A
+//           }
+//       }
+//   }
+
+//   ctx.putImageData(imageData, 0, 0);
+//   return canvas;
+// }
+
+// const size = 512;
+// const faces = Array(6).fill(-1).map(() => generateNoiseCloudTexture(size));
+// const cubeTexture = new THREE.CubeTexture(faces);
+// cubeTexture.needsUpdate = true;
+
+// scene.environment = cubeTexture;
+// scene.background = cubeTexture;  // Optional
+// waterMaterial.uniforms.envMap.value = scene.environment
+
+// -----------------------------------------------------
+
+const ambientLight = new THREE.AmbientLight(0x555555, 1);
+
+const directionalLight = new THREE.DirectionalLight( SUNRISE, 0.5 );
+directionalLight.position.set(300, 70, 300);
+directionalLight.castShadow = true;
+directionalLight.intensity = 1;
+directionalLight.target = group;
+
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height= 2048;
+directionalLight.shadow.camera.near = 0.1;
+directionalLight.shadow.camera.far = 2000;
+
+directionalLight.shadow.camera.left = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.right = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.top = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.bottom = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+
+scene.add( directionalLight, ambientLight );
+
+// const dayNightCycle = new DayNightCycle(scene, directionalLight, ambientLight);
+
+let lastTime = performance.now();
+
+const DAY_COLORS = {
+  DAWN: 0xff9a76,    // Warm orange
+  NOON: 0xffffff,    // Bright white
+  DUSK: 0xff6b6b,    // Warm red
+  NIGHT: 0x1a237e    // Deep blue
+};
+
+let dayTime = 0;
+const DAY_DURATION = 300; // 5 minutes per cycle
+
 function animate() {
+
+  const currentTime = performance.now();
+  const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+  lastTime = currentTime;
 
   stats.begin();
   controls.update();
+
+  // dayNightCycle.update(deltaTime);
 
   const positions = waterMesh.geometry.attributes.position.array;
   const time = performance.now() * 0.001; // Current time in seconds
@@ -359,31 +467,24 @@ function animate() {
   stats.end();
 
   waterMaterial.uniforms.time.value += 0.016;
+  
+  const t = performance.now() * 0.0001;
+  const sunX = Math.cos(t) * 300;
+  const sunHeight = Math.sin(t) * 230 + 70;  // Oscillate between -230 and +230, offset by 70
+  const sunZ = Math.sin(t) * 300;
+
+  directionalLight.position.set(sunX, sunHeight, sunZ);
+
+  // Optional: adjust light intensity based on height
+  const heightFactor = (sunHeight - 70) / 230;  // Convert height to -1 to 1 range
+  directionalLight.intensity = Math.max(0.2, heightFactor + 0.5);  // Keep minimum lighting at 0.2
+
 
   renderer.render(scene, camera);
 }
 
 scene.add(group);
 
-const ambientLight = new THREE.AmbientLight(0x555555, 1);
-
-const directionalLight = new THREE.DirectionalLight( SUNRISE, 0.5 );
-directionalLight.position.set(300, 70, 300);
-directionalLight.castShadow = true;
-directionalLight.intensity = 1;
-directionalLight.target = group;
-
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height= 2048;
-directionalLight.shadow.camera.near = 0.1;
-directionalLight.shadow.camera.far = 2000;
-
-directionalLight.shadow.camera.left = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.right = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.top = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.bottom = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-
-scene.add( directionalLight, ambientLight );
 
 
 const controls = new MapControls(camera, renderer.domElement);
@@ -391,8 +492,8 @@ const controls = new MapControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.08;
+controls.autoRotate = false;
+// controls.autoRotateSpeed = 0.08;
 
 controls.screenSpacePanning = false;
 
