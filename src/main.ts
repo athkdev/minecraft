@@ -429,7 +429,7 @@ scene.add( directionalLight, ambientLight );
 
 function animate() {
 
-  const currentTime = performance.now();
+  // const currentTime = performance.now();
   // const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
   // lastTime = currentTime;
 
