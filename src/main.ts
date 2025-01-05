@@ -427,6 +427,12 @@ scene.add( directionalLight, ambientLight );
 // let dayTime = 0;
 // const DAY_DURATION = 300; // 5 minutes per cycle
 
+function updateShadowBias() {
+  const cameraHeight = camera.position.y;
+  const dynamicBias = -0.001 - (cameraHeight * 0.0001);
+  directionalLight.shadow.bias = Math.max(-0.01, dynamicBias);
+}
+
 function animate() {
 
   // const currentTime = performance.now();
@@ -479,6 +485,7 @@ function animate() {
   const heightFactor = (sunHeight - 70) / 230;  // Convert height to -1 to 1 range
   directionalLight.intensity = Math.max(0.2, heightFactor + 0.5);  // Keep minimum lighting at 0.2
 
+  updateShadowBias();
 
   renderer.render(scene, camera);
 }
