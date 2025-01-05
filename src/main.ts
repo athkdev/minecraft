@@ -435,10 +435,6 @@ function updateShadowBias() {
 
 function animate() {
 
-  // const currentTime = performance.now();
-  // const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
-  // lastTime = currentTime;
-
   stats.begin();
   controls.update();
 
@@ -453,8 +449,8 @@ function animate() {
       const worldZ = positions[i + 2];
       
       // Create wave motion
-      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.1;
-      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.1;
+      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.3;
+      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.3;
       const wave3 = Math.sin((worldX + worldZ) * 0.4 + time) * 0.05;
       
       // Only modify Y position (index + 1)
@@ -463,7 +459,8 @@ function animate() {
 
   // Mark geometry for update
   waterMesh.geometry.attributes.position.needsUpdate = true;
-  waterMesh.geometry.computeVertexNormals();
+  
+  // waterMesh.geometry.computeVertexNormals();
   
   // Update water material time uniform if you're still using it
   if (waterMaterial.uniforms && waterMaterial.uniforms.time) {
@@ -491,7 +488,6 @@ function animate() {
 }
 
 scene.add(group);
-
 
 
 const controls = new MapControls(camera, renderer.domElement);
