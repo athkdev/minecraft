@@ -402,7 +402,7 @@ directionalLight.intensity = 1;
 directionalLight.target = group;
 
 directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height= 2048;
+directionalLight.shadow.mapSize.height = 2048;
 directionalLight.shadow.camera.near = 0.1;
 directionalLight.shadow.camera.far = 2000;
 
@@ -433,10 +433,31 @@ function updateShadowBias() {
   directionalLight.shadow.bias = Math.max(-0.01, dynamicBias);
 }
 
+
+const controls = new MapControls(camera, renderer.domElement);
+
+const initialDistance = camera.position.distanceTo(controls.target);
+let currentZoom = initialDistance;
+let targetZoom = initialDistance;
+
+renderer.domElement.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    // Accumulate the target zoom based on wheel delta
+    targetZoom += e.deltaY * 0.1;  // Adjust multiplier to control zoom sensitivity
+    targetZoom = Math.max(controls.minDistance, Math.min(targetZoom, controls.maxDistance));
+});
+
 function animate() {
 
   stats.begin();
   controls.update();
+
+    currentZoom += (targetZoom - currentZoom) * 0.05;  // Adjust 0.05 for different smoothness
+
+    // Apply the smoothed zoom
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(controls.target).add(direction.multiplyScalar(currentZoom));
+
 
   // dayNightCycle.update(deltaTime);
 
@@ -449,8 +470,8 @@ function animate() {
       const worldZ = positions[i + 2];
       
       // Create wave motion
-      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.3;
-      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.3;
+      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.2;
+      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.2;
       const wave3 = Math.sin((worldX + worldZ) * 0.4 + time) * 0.05;
       
       // Only modify Y position (index + 1)
@@ -490,10 +511,11 @@ function animate() {
 scene.add(group);
 
 
-const controls = new MapControls(camera, renderer.domElement);
 
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
+
+controls.enableZoom = false;
 
 controls.autoRotate = false;
 // controls.autoRotateSpeed = 0.08;
@@ -502,6 +524,9 @@ controls.screenSpacePanning = false;
 
 controls.minDistance = 1;
 controls.maxDistance = 500;
+
+
+
 
 const app = document.getElementById("app");
 
@@ -512,3 +537,4 @@ renderer.setAnimationLoop(animate);
 const stats = new Stats();
 stats.showPanel(1);
 app?.appendChild(stats.dom);
+
