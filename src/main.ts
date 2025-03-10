@@ -21,21 +21,19 @@ const camera = new THREE.PerspectiveCamera(
   800,
   window.innerWidth / window.innerHeight,
   0.1,
-  500,
+  500
 );
-
 
 scene.background = new THREE.Color(0x08001f);
 scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
 
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
-  precision: "highp"
+  precision: "highp",
 });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setSize(window.innerWidth, window.innerHeight);
-
 
 const geometry = new THREE.BoxGeometry(1, 1, 1);
 const textureLoader = new THREE.TextureLoader();
@@ -141,16 +139,30 @@ const MAX_HEIGHT = 25;
 const MAX_DEPTH = 3;
 const WATER_LEVEL = MAX_DEPTH - 1;
 
-const geometries: any = [];
-const lakeGeometries: any = [];
-const waterGeometries: any = [];
+// Store our terrain data for occlusion check
+const terrainMap: number[][][] = Array(CHUNK_SIZE)
+  .fill(null)
+  .map(() => 
+    Array(MAX_HEIGHT + MAX_DEPTH)
+      .fill(null)
+      .map(() => Array(CHUNK_SIZE).fill(0))
+  );
 
+// Define block types
+const BLOCK_TYPE = {
+  AIR: 0,
+  SOLID: 1,
+  LAKE_BED: 2,
+  WATER: 3
+};
+
+// First pass: Generate the terrain height map and populate the 3D array
 for (let x = 0; x < CHUNK_SIZE; ++x) {
   for (let z = 0; z < CHUNK_SIZE; ++z) {
+    const baseHeight =
+      n.perlin2(z * (7 / CHUNK_SIZE), x * (7 / CHUNK_SIZE)) * MAX_HEIGHT;
 
-    const baseHeight = n.perlin2(z * (7/ CHUNK_SIZE), x * (7/ CHUNK_SIZE)) * MAX_HEIGHT;
-
-    const featureNoise = n.perlin2(x * (5 / CHUNK_SIZE), z * (5 / CHUNK_SIZE));  // nested perlin noise for generating lakes
+    const featureNoise = n.perlin2(x * (5 / CHUNK_SIZE), z * (5 / CHUNK_SIZE)); // nested perlin noise for generating lakes
 
     let finalHeight = Math.max(MAX_DEPTH, baseHeight + MAX_DEPTH);
 
@@ -158,42 +170,112 @@ for (let x = 0; x < CHUNK_SIZE; ++x) {
       finalHeight = Math.min(WATER_LEVEL, finalHeight);
     }
 
-    // place blocks vertically
-    
+    // Fill in the blocks in our terrain map
     for (let y = 0; y < finalHeight; ++y) {
-      const blockSize = 1;
-      const blockGeometry = geometry.clone();
-
-      blockGeometry.translate(x * blockSize, y * blockSize, z * blockSize);
-
-      setUVs(blockGeometry);
-
       if (featureNoise < -0.2) {
-        // Add to lake bed geometries
-        
-        // If this is the top block of the lake bed, add water blocks above it
-        if (y >= finalHeight - 1) {
-          // Ad water blocks from the top of the lake bed up to the water level
-          for (let waterY = y + 1; waterY <= WATER_LEVEL; waterY++) {
-            const waterBlockGeometry = geometry.clone();
-            setUVs(waterBlockGeometry);
-            waterBlockGeometry.translate(x * blockSize, waterY * blockSize, z * blockSize);
-            // waterBlockGeometry.rotateX(-Math.PI / 2);
-            waterGeometries.push(waterBlockGeometry);
-
-          }
-        }
-        else {
-          lakeGeometries.push(blockGeometry);
-
-        }
+        terrainMap[x][y][z] = BLOCK_TYPE.LAKE_BED;
       } else {
-        geometries.push(blockGeometry);
+        terrainMap[x][y][z] = BLOCK_TYPE.SOLID;
       }
+    }
 
+    // Add water blocks above lake bed up to water level
+    if (featureNoise < -0.2) {
+      for (let y = finalHeight; y <= WATER_LEVEL; ++y) {
+        terrainMap[x][y][z] = BLOCK_TYPE.WATER;
+      }
     }
   }
 }
+
+// Function to check if a block is occluded (completely surrounded by other blocks)
+function isBlockOccluded(x: number, y: number, z: number): boolean {
+  // Don't cull blocks at the edges of the map
+  if (x === 0 || x === CHUNK_SIZE - 1 || y === 0 || z === 0 || z === CHUNK_SIZE - 1) {
+    return false;
+  }
+
+  // Check all 6 adjacent blocks
+  return (
+    terrainMap[x + 1][y][z] !== BLOCK_TYPE.AIR && 
+    terrainMap[x - 1][y][z] !== BLOCK_TYPE.AIR && 
+    terrainMap[x][y + 1][z] !== BLOCK_TYPE.AIR && 
+    terrainMap[x][y - 1][z] !== BLOCK_TYPE.AIR && 
+    terrainMap[x][y][z + 1] !== BLOCK_TYPE.AIR && 
+    terrainMap[x][y][z - 1] !== BLOCK_TYPE.AIR
+  );
+}
+
+// Function to check if a face is occluded
+function isFaceVisible(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number): boolean {
+  // Check if neighbor is out of bounds
+  if (
+    x2 < 0 || x2 >= CHUNK_SIZE ||
+    y2 < 0 || y2 >= MAX_HEIGHT + MAX_DEPTH ||
+    z2 < 0 || z2 >= CHUNK_SIZE
+  ) {
+    return true; // Faces at chunk boundaries are visible
+  }
+  
+  // Check if there's air or water next to this face
+  return terrainMap[x2][y2][z2] === BLOCK_TYPE.AIR || 
+         (terrainMap[x1][y1][z1] !== BLOCK_TYPE.WATER && terrainMap[x2][y2][z2] === BLOCK_TYPE.WATER);
+}
+
+const geometries: any = [];
+const lakeGeometries: any = [];
+const waterGeometries: any = [];
+
+let totalBlocks = 0;
+let visibleBlocks = 0;
+
+// Second pass: Create geometries for visible blocks only
+for (let x = 0; x < CHUNK_SIZE; ++x) {
+  for (let z = 0; z < CHUNK_SIZE; ++z) {
+    for (let y = 0; y < terrainMap[x].length; ++y) {
+      if (terrainMap[x][y][z] === BLOCK_TYPE.AIR) continue;
+
+      totalBlocks++;
+      
+      // Skip fully occluded blocks (optimization)
+      if (isBlockOccluded(x, y, z)) continue;
+
+      visibleBlocks++;
+      
+      const blockSize = 1;
+      
+      // Only create faces that are actually visible (face culling)
+      const visibleFaces = {
+        px: isFaceVisible(x, y, z, x + 1, y, z), // positive X face
+        nx: isFaceVisible(x, y, z, x - 1, y, z), // negative X face
+        py: isFaceVisible(x, y, z, x, y + 1, z), // positive Y face
+        ny: isFaceVisible(x, y, z, x, y - 1, z), // negative Y face
+        pz: isFaceVisible(x, y, z, x, y, z + 1), // positive Z face
+        nz: isFaceVisible(x, y, z, x, y, z - 1)  // negative Z face
+      };
+      
+      // If using individual faces, we would check each face visibility
+      // For simplicity, we'll use a full box but this could be optimized further
+      // by only creating visible faces
+      if (Object.values(visibleFaces).some(visible => visible)) {
+        const blockGeometry = geometry.clone();
+        blockGeometry.translate(x * blockSize, y * blockSize, z * blockSize);
+        setUVs(blockGeometry);
+
+        if (terrainMap[x][y][z] === BLOCK_TYPE.WATER) {
+          waterGeometries.push(blockGeometry);
+        } else if (terrainMap[x][y][z] === BLOCK_TYPE.LAKE_BED) {
+          lakeGeometries.push(blockGeometry);
+        } else {
+          geometries.push(blockGeometry);
+        }
+      }
+    }
+  }
+}
+
+// Log the culling statistics
+console.log(`Occlusion culling stats: ${visibleBlocks} visible blocks out of ${totalBlocks} total blocks (${Math.round((1 - visibleBlocks/totalBlocks) * 100)}% culled)`);
 
 group.frustumCulled = true;
 
@@ -201,10 +283,17 @@ const regular = BufferGeometryUtils.mergeGeometries(geometries, true);
 const lakes = BufferGeometryUtils.mergeGeometries(lakeGeometries, true);
 const water = BufferGeometryUtils.mergeGeometries(waterGeometries, true);
 
+// Now all the respective blocks are merged into their own geometries - hence far less computations ; )
+
 const mesh = new THREE.Mesh(
   regular,
-  new THREE.MeshStandardMaterial({ map: grassAtlas, normalMap: grassNormal, normalScale: new THREE.Vector2(1/4, -1/4), roughness: 1, metalness: 0 })
-
+  new THREE.MeshStandardMaterial({
+    map: grassAtlas,
+    normalMap: grassNormal,
+    normalScale: new THREE.Vector2(1 / 4, -1 / 4),
+    roughness: 1,
+    metalness: 0,
+  })
 );
 
 mesh.castShadow = true;
@@ -219,10 +308,10 @@ lakesMesh.receiveShadow = true;
 
 const waterMaterial = new THREE.ShaderMaterial({
   uniforms: {
-      time: { value: 0.0 },
-      envMap: { value: scene.environment },
-      waterTexture: { value: waterAtlas },
-      lod: { value: 0.0 }
+    time: { value: 0.0 },
+    envMap: { value: scene.environment },
+    waterTexture: { value: waterAtlas },
+    lod: { value: 0.0 },
   },
   vertexShader: `
       uniform float time;
@@ -301,7 +390,7 @@ const waterMaterial = new THREE.ShaderMaterial({
       }
   `,
   transparent: true,
-  side: THREE.DoubleSide
+  side: THREE.DoubleSide,
 });
 
 // Update texture settings
@@ -317,13 +406,10 @@ const waterMaterial1 = new THREE.MeshStandardMaterial({
   opacity: 0.7,
   envMap: scene.environment,
   roughness: 0.2,
-  metalness: 0.8
+  metalness: 0.8,
 });
 
-const waterMesh = new THREE.Mesh(
-  water,
-waterMaterial1
-);
+const waterMesh = new THREE.Mesh(water, waterMaterial1);
 
 waterMesh.receiveShadow = true;
 
@@ -362,7 +448,7 @@ const originalPositions = water.attributes.position.array.slice();
 //           const n3 = n.perlin2(x * 0.04 + 1000, y * 0.04 + 1000) * 0.25;
 
 //           let noiseVal = (n1 + n2 + n3);
-          
+
 //           // Only show clouds in upper portion and add vertical falloff
 //           const verticalFalloff = 1 - (y / size);
 //           noiseVal *= verticalFalloff * verticalFalloff;
@@ -395,7 +481,7 @@ const originalPositions = water.attributes.position.array.slice();
 
 const ambientLight = new THREE.AmbientLight(0x555555, 1);
 
-const directionalLight = new THREE.DirectionalLight( SUNRISE, 0.5 );
+const directionalLight = new THREE.DirectionalLight(SUNRISE, 0.5);
 directionalLight.position.set(300, 70, 300);
 directionalLight.castShadow = true;
 directionalLight.intensity = 1;
@@ -406,12 +492,16 @@ directionalLight.shadow.mapSize.height = 2048;
 directionalLight.shadow.camera.near = 0.1;
 directionalLight.shadow.camera.far = 2000;
 
-directionalLight.shadow.camera.left = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.right = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.top = 1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
-directionalLight.shadow.camera.bottom = -1 * (Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2));
+directionalLight.shadow.camera.left =
+  -1 * Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2);
+directionalLight.shadow.camera.right =
+  1 * Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2);
+directionalLight.shadow.camera.top =
+  1 * Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2);
+directionalLight.shadow.camera.bottom =
+  -1 * Math.sqrt(CHUNK_SIZE ** 2 + CHUNK_SIZE ** 2);
 
-scene.add( directionalLight, ambientLight );
+scene.add(directionalLight, ambientLight);
 
 // const dayNightCycle = new DayNightCycle(scene, directionalLight, ambientLight);
 
@@ -429,10 +519,9 @@ scene.add( directionalLight, ambientLight );
 
 function updateShadowBias() {
   const cameraHeight = camera.position.y;
-  const dynamicBias = -0.001 - (cameraHeight * 0.0001);
+  const dynamicBias = -0.001 - cameraHeight * 0.0001;
   directionalLight.shadow.bias = Math.max(-0.01, dynamicBias);
 }
-
 
 const controls = new MapControls(camera, renderer.domElement);
 
@@ -440,68 +529,71 @@ const initialDistance = camera.position.distanceTo(controls.target);
 let currentZoom = initialDistance;
 let targetZoom = initialDistance;
 
-renderer.domElement.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    // Accumulate the target zoom based on wheel delta
-    targetZoom += e.deltaY * 0.1;  // Adjust multiplier to control zoom sensitivity
-    targetZoom = Math.max(controls.minDistance, Math.min(targetZoom, controls.maxDistance));
+renderer.domElement.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  // Accumulate the target zoom based on wheel delta
+  targetZoom += e.deltaY * 0.1; // Adjust multiplier to control zoom sensitivity
+  targetZoom = Math.max(
+    controls.minDistance,
+    Math.min(targetZoom, controls.maxDistance)
+  );
 });
 
 function animate() {
-
   stats.begin();
   controls.update();
 
-    currentZoom += (targetZoom - currentZoom) * 0.05;  // Adjust 0.05 for different smoothness
+  currentZoom += (targetZoom - currentZoom) * 0.05; // Adjust 0.05 for different smoothness
 
-    // Apply the smoothed zoom
-    const direction = camera.position.clone().sub(controls.target).normalize();
-    camera.position.copy(controls.target).add(direction.multiplyScalar(currentZoom));
-
+  // Apply the smoothed zoom
+  const direction = camera.position.clone().sub(controls.target).normalize();
+  camera.position
+    .copy(controls.target)
+    .add(direction.multiplyScalar(currentZoom));
 
   // dayNightCycle.update(deltaTime);
 
   const positions = waterMesh.geometry.attributes.position.array;
   const time = performance.now() * 0.001; // Current time in seconds
-  
-  for(let i = 0; i < positions.length; i += 3) {
-      // Get the world position of this vertex
-      const worldX = positions[i];
-      const worldZ = positions[i + 2];
-      
-      // Create wave motion
-      const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.2;
-      const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.2;
-      const wave3 = Math.sin((worldX + worldZ) * 0.4 + time) * 0.05;
-      
-      // Only modify Y position (index + 1)
-      positions[i + 1] = originalPositions[i + 1] + wave1 + wave2 + wave3;
-  } 
+
+  for (let i = 0; i < positions.length; i += 3) {
+    // Get the world position of this vertex
+    const worldX = positions[i];
+    const worldZ = positions[i + 2];
+
+    // Create wave motion
+    const wave1 = Math.sin(worldX * 0.5 + time * 2.0) * 0.2;
+    const wave2 = Math.sin(worldZ * 0.3 + time * 1.5) * 0.2;
+    const wave3 = Math.sin((worldX + worldZ) * 0.4 + time) * 0.05;
+
+    // Only modify Y position (index + 1)
+    positions[i + 1] = originalPositions[i + 1] + wave1 + wave2 + wave3;
+  }
 
   // Mark geometry for update
   waterMesh.geometry.attributes.position.needsUpdate = true;
-  
+
   // waterMesh.geometry.computeVertexNormals();
-  
+
   // Update water material time uniform if you're still using it
   if (waterMaterial.uniforms && waterMaterial.uniforms.time) {
-      waterMaterial.uniforms.time.value = time;
+    waterMaterial.uniforms.time.value = time;
   }
 
   stats.end();
 
   waterMaterial.uniforms.time.value += 0.016;
-  
+
   const t = performance.now() * 0.0001;
   const sunX = Math.cos(t) * 300;
-  const sunHeight = Math.sin(t) * 230 + 70;  // Oscillate between -230 and +230, offset by 70
+  const sunHeight = Math.sin(t) * 230 + 70; // Oscillate between -230 and +230, offset by 70
   const sunZ = Math.sin(t) * 300;
 
   directionalLight.position.set(sunX, sunHeight, sunZ);
 
   // Optional: adjust light intensity based on height
-  const heightFactor = (sunHeight - 70) / 230;  // Convert height to -1 to 1 range
-  directionalLight.intensity = Math.max(0.2, heightFactor + 0.5);  // Keep minimum lighting at 0.2
+  const heightFactor = (sunHeight - 70) / 230; // Convert height to -1 to 1 range
+  directionalLight.intensity = Math.max(0.2, heightFactor + 0.5); // Keep minimum lighting at 0.2
 
   updateShadowBias();
 
@@ -509,8 +601,6 @@ function animate() {
 }
 
 scene.add(group);
-
-
 
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
@@ -525,9 +615,6 @@ controls.screenSpacePanning = false;
 controls.minDistance = 1;
 controls.maxDistance = 500;
 
-
-
-
 const app = document.getElementById("app");
 
 app?.appendChild(renderer.domElement);
@@ -537,4 +624,3 @@ renderer.setAnimationLoop(animate);
 const stats = new Stats();
 stats.showPanel(1);
 app?.appendChild(stats.dom);
-
